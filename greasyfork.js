@@ -91,7 +91,7 @@
         }
         // 提取笔记内容数据
         function extractNoteData() {
-            const noteElements = document.querySelectorAll('div[data-v-30d73e1a]');
+            const noteElements = document.querySelectorAll('div[data-v-e43676be]');
             noteElements.forEach(noteElement => {
                 // 检查是否已提取过该笔记内容数据
                 if (!noteElement.classList.contains('extracted')) {
