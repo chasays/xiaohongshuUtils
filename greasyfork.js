@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name 小红书工具
-// @version 3.1.10
+// @version 3.1.12
 // @description 仅用于学习：小红书搜索、首页、推荐页面笔记数据导出、小红书笔记图片视频导出、小红书搜索快速跳转
 // @match https://www.xiaohongshu.com/*
 // @license MIT
