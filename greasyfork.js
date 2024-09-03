@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name 小红书工具
-// @version 3.1.15
+// @version 3.1.16
 // @description 仅用于学习：小红书搜索、首页、推荐页面笔记数据导出、小红书笔记图片视频导出、小红书搜索快速跳转
 // @match https://www.xiaohongshu.com/*
 // @license MIT
@@ -91,7 +91,7 @@
         }
         // 提取笔记内容数据
         function extractNoteData() {
-            const noteElements = document.querySelectorAll('div[data-v-e43676be]');
+            const noteElements = document.querySelectorAll('div[data-v-3e97982a]');
             noteElements.forEach(noteElement => {
                 // 检查是否已提取过该笔记内容数据
                 if (!noteElement.classList.contains('extracted')) {
