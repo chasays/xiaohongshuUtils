@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name 小红书工具
-// @version 3.2.0
+// @version 3.2.1
 // @description 仅用于学习：小红书搜索、首页、推荐页面笔记数据导出、小红书笔记图片视频导出、小红书搜索快速跳转
 // @match https://www.xiaohongshu.com/*
 // @run-at document-idle
@@ -583,6 +583,7 @@
                     url,
                     name: filename,
                     saveAs: false,
+                    conflictAction: 'uniquify',
                     onload: resolve,
                     onerror: reject,
                     ontimeout: reject
@@ -786,6 +787,7 @@
 
     return {
         buildCsv,
+        downloadRemoteFile,
         extractNoteRecord,
         getMediaUrls,
         getNoteTitle,

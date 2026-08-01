@@ -39,6 +39,22 @@ test('exports a testable userscript core', () => {
     assert.strictEqual(typeof api.getNoteTitle, 'function');
     assert.strictEqual(typeof api.getNoteIdentity, 'function');
     assert.strictEqual(typeof api.updateCountText, 'function');
+    assert.strictEqual(typeof api.downloadRemoteFile, 'function');
+});
+
+test('requests silent unique downloads from the Tampermonkey browser API', () => {
+    let capturedDetails = null;
+    const rootValue = {
+        GM_download(details) {
+            capturedDetails = details;
+        }
+    };
+
+    api.downloadRemoteFile(rootValue, 'https://sns-webpic-qc.xhscdn.com/example.webp', 'example.webp');
+
+    assert.ok(capturedDetails);
+    assert.strictEqual(capturedDetails.saveAs, false);
+    assert.strictEqual(capturedDetails.conflictAction, 'uniquify');
 });
 
 test('recognizes current feed, search, profile, and note URLs', () => {
