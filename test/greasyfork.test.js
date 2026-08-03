@@ -157,6 +157,9 @@ test('deduplicates current slide images and reads JSON-LD video URLs', () => {
         })
     };
     const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/noteId'
+        },
         querySelectorAll(selector) {
             if (selector === '.swiper-slide img, .note-slider-img img') {
                 return [imageOne, imageOneDuplicate, imageTwo];
@@ -176,6 +179,266 @@ test('deduplicates current slide images and reads JSON-LD video URLs', () => {
         videos: ['https://sns-video-v4.xhscdn.com/example.mp4?sign=abc']
     });
     assert.strictEqual(api.getNoteTitle(documentFixture), '视频标题');
+});
+
+test('prefers a non-watermarked initial-state stream over the JSON-LD video URL', () => {
+    const watermarkedUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/watermarked_259.mp4';
+    const cleanUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/301/clean_301.mp4';
+    const videoScript = {
+        textContent: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'VideoObject',
+            contentUrl: watermarkedUrl
+        })
+    };
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    noteId: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        EF4: [{
+                                            masterUrl: watermarkedUrl,
+                                            streamDesc: 'WM_X264_MP4_web',
+                                            videoCodec: 'h264',
+                                            width: 720
+                                        }],
+                                        EF5: [{
+                                            masterUrl: cleanUrl,
+                                            streamDesc: 'WEB_301',
+                                            videoCodec: 'EF5',
+                                            width: 1080
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const documentFixture = {
+        querySelectorAll(selector) {
+            if (selector === 'script[type="application/ld+json"]') {
+                return [videoScript];
+            }
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture), {
+        images: [],
+        videos: ['https://sns-video-v2.xhscdn.com/stream/1/110/301/clean_301.mp4']
+    });
+});
+
+test('only ranks initial-state streams belonging to the current note', () => {
+    const currentUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/301/current_301.mp4';
+    const otherUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/109/other_109.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        EF5: [{
+                                            masterUrl: currentUrl,
+                                            streamDesc: 'WEB_301',
+                                            videoCodec: 'EF5',
+                                            width: 1080
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    otherNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        h264: [{
+                                            masterUrl: otherUrl,
+                                            streamDesc: 'X264_MP4',
+                                            videoCodec: 'h264',
+                                            width: 2160
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            return selector === 'script' ? [initialStateScript] : [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture), {
+        images: [],
+        videos: ['https://sns-video-v2.xhscdn.com/stream/1/110/301/current_301.mp4']
+    });
+});
+
+test('ignores stale initial-state notes after SPA navigation', () => {
+    const staleUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/109/stale_109.mp4';
+    const currentJsonLdUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/current_259.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    previousNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        EF5: [{
+                                            masterUrl: staleUrl,
+                                            streamDesc: 'WEB_109',
+                                            videoCodec: 'EF5',
+                                            width: 2160
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const jsonLdScript = {
+        textContent: JSON.stringify({
+            '@type': 'VideoObject',
+            contentUrl: currentJsonLdUrl
+        })
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            if (selector === 'script[type="application/ld+json"]') {
+                return [jsonLdScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture), {
+        images: [],
+        videos: [currentJsonLdUrl]
+    });
+});
+
+test('does not use unrelated root-state streams on a current note URL', () => {
+    const unrelatedUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/109/unrelated_109.mp4';
+    const currentJsonLdUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/current_259.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            feed: {
+                cards: [{
+                    masterUrl: unrelatedUrl,
+                    streamDesc: 'WEB_109',
+                    videoCodec: 'h264',
+                    width: 2160
+                }]
+            }
+        })};`
+    };
+    const jsonLdScript = {
+        textContent: JSON.stringify({
+            '@type': 'VideoObject',
+            contentUrl: currentJsonLdUrl
+        })
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            if (selector === 'script[type="application/ld+json"]') {
+                return [jsonLdScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture), {
+        images: [],
+        videos: [currentJsonLdUrl]
+    });
+});
+
+test('falls back to JSON-LD when the current stream URL is empty', () => {
+    const jsonLdUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/fallback_259.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        EF5: [{ masterUrl: '', streamDesc: 'WEB_301', width: 1080 }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const jsonLdScript = {
+        textContent: JSON.stringify({
+            '@type': 'VideoObject',
+            contentUrl: jsonLdUrl
+        })
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            if (selector === 'script[type="application/ld+json"]') {
+                return [jsonLdScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture), {
+        images: [],
+        videos: [jsonLdUrl]
+    });
 });
 
 test('reads video masterUrl from initial state containing undefined values', () => {

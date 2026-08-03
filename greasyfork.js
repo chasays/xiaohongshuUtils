@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name 小红书工具
-// @version 3.2.1
+// @version 3.2.2
 // @description 仅用于学习：小红书搜索、首页、推荐页面笔记数据导出、小红书笔记图片视频导出、小红书搜索快速跳转
 // @match https://www.xiaohongshu.com/*
 // @run-at document-idle
@@ -103,14 +103,18 @@
         return url.href;
     }
 
-    function getNoteIdentity(noteUrl) {
+    function getNoteIdFromUrl(noteUrl) {
         try {
             const path = new URL(noteUrl, 'https://www.xiaohongshu.com').pathname;
-            const match = path.match(/^\/explore\/([0-9a-z]+)/i);
-            return match ? match[1] : noteUrl;
+            const match = path.match(/^\/(?:explore|search_result)\/([0-9a-z]+)/i);
+            return match ? match[1] : '';
         } catch (error) {
-            return noteUrl;
+            return '';
         }
+    }
+
+    function getNoteIdentity(noteUrl) {
+        return getNoteIdFromUrl(noteUrl) || noteUrl;
     }
 
     function extractNoteRecord(noteElement, baseUrl) {
@@ -280,6 +284,23 @@
         return null;
     }
 
+    function normalizeRemoteMediaUrl(value) {
+        if (typeof value !== 'string' || !value.trim()) {
+            return '';
+        }
+
+        try {
+            const url = new URL(value.trim());
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                return '';
+            }
+            url.protocol = 'https:';
+            return url.href;
+        } catch (error) {
+            return '';
+        }
+    }
+
     function getMediaUrls(documentValue) {
         const images = new Set();
         const videos = new Set();
@@ -295,48 +316,68 @@
             }
         });
 
-        parseJsonLd(documentValue).forEach(data => {
-            walkObject(data, value => {
-                const types = Array.isArray(value['@type']) ? value['@type'] : [value['@type']];
-                if (types.includes('VideoObject') && typeof value.contentUrl === 'string') {
-                    videos.add(value.contentUrl.replace(/^http:/, 'https:'));
-                }
-            });
+        const initialState = readInitialState(documentValue);
+        const currentNoteId = getNoteIdFromUrl(documentValue.location && documentValue.location.href);
+        const noteDetailMap = initialState && initialState.note && initialState.note.noteDetailMap;
+        let candidateRoot = currentNoteId ? null : initialState;
+        const candidates = [];
+
+        if (currentNoteId
+            && noteDetailMap
+            && typeof noteDetailMap === 'object'
+            && Object.prototype.hasOwnProperty.call(noteDetailMap, currentNoteId)) {
+            candidateRoot = noteDetailMap[currentNoteId];
+        }
+
+        walkObject(candidateRoot, value => {
+            const mediaUrl = normalizeRemoteMediaUrl(value.masterUrl);
+            if (mediaUrl) {
+                candidates.push({
+                    url: mediaUrl,
+                    codec: String(value.videoCodec || ''),
+                    streamDesc: String(value.streamDesc || ''),
+                    width: Number(value.width || 0),
+                    isDefault: Number(value.defaultStream || 0)
+                });
+            }
         });
 
+        candidates.sort((left, right) => {
+            const watermarkPattern = /(?:^|[_\s-])wm(?:[_\s-]|$)|watermark/i;
+            const leftClean = watermarkPattern.test(left.streamDesc) ? 0 : 1;
+            const rightClean = watermarkPattern.test(right.streamDesc) ? 0 : 1;
+            const leftH264 = /h264|x264/i.test(`${left.codec} ${left.streamDesc}`) ? 1 : 0;
+            const rightH264 = /h264|x264/i.test(`${right.codec} ${right.streamDesc}`) ? 1 : 0;
+            return rightClean - leftClean
+                || rightH264 - leftH264
+                || right.isDefault - left.isDefault
+                || right.width - left.width;
+        });
+
+        if (candidates[0]) {
+            videos.add(candidates[0].url);
+        }
+
         if (videos.size === 0) {
-            Array.from(documentValue.querySelectorAll('video, video source')).forEach(video => {
-                const url = video.currentSrc || getAttribute(video, 'src') || getAttribute(video, 'data-src');
-                if (url && !url.startsWith('blob:')) {
-                    videos.add(url.replace(/^http:/, 'https:'));
-                }
+            parseJsonLd(documentValue).forEach(data => {
+                walkObject(data, value => {
+                    const types = Array.isArray(value['@type']) ? value['@type'] : [value['@type']];
+                    const mediaUrl = normalizeRemoteMediaUrl(value.contentUrl);
+                    if (types.includes('VideoObject') && mediaUrl) {
+                        videos.add(mediaUrl);
+                    }
+                });
             });
         }
 
         if (videos.size === 0) {
-            const initialState = readInitialState(documentValue);
-            const candidates = [];
-
-            walkObject(initialState, value => {
-                if (typeof value.masterUrl === 'string') {
-                    candidates.push({
-                        url: value.masterUrl,
-                        codec: String(value.videoCodec || ''),
-                        width: Number(value.width || 0),
-                        isDefault: Number(value.defaultStream || 0)
-                    });
+            Array.from(documentValue.querySelectorAll('video, video source')).forEach(video => {
+                const url = video.currentSrc || getAttribute(video, 'src') || getAttribute(video, 'data-src');
+                const mediaUrl = normalizeRemoteMediaUrl(url);
+                if (mediaUrl) {
+                    videos.add(mediaUrl);
                 }
             });
-
-            candidates.sort((left, right) => {
-                const leftH264 = left.codec.toLowerCase() === 'h264' ? 1 : 0;
-                const rightH264 = right.codec.toLowerCase() === 'h264' ? 1 : 0;
-                return rightH264 - leftH264 || right.isDefault - left.isDefault || right.width - left.width;
-            });
-
-            if (candidates[0]) {
-                videos.add(candidates[0].url.replace(/^http:/, 'https:'));
-            }
         }
 
         return {
