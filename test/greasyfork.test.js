@@ -195,6 +195,9 @@ test('prefers current-note original image URLs over rendered thumbnails', () => 
                                 urlDefault: 'http://sns-webpic-qc.xhscdn.com/20260804/abc/first-image!nd_dft_wlteh_jpg_3'
                             }, {
                                 url: 'https://sns-webpic-qc.xhscdn.com/20260804/abc/second-image!nd_dft_wlteh_jpg_3'
+                            }, {
+                                urlDefault: 'https://example.com/unsupported-thumbnail.webp',
+                                url: 'https://sns-webpic-qc.xhscdn.com/20260804/abc/third-image!nd_dft_wlteh_jpg_3'
                             }]
                         }
                     }
@@ -219,7 +222,8 @@ test('prefers current-note original image URLs over rendered thumbnails', () => 
 
     assert.deepStrictEqual(api.getMediaUrls(documentFixture).images, [
         'https://ci.xiaohongshu.com/first-image?imageView2/format/jpeg',
-        'https://ci.xiaohongshu.com/second-image?imageView2/format/jpeg'
+        'https://ci.xiaohongshu.com/second-image?imageView2/format/jpeg',
+        'https://ci.xiaohongshu.com/third-image?imageView2/format/jpeg'
     ]);
 });
 
@@ -321,6 +325,46 @@ test('uses the clean highest-resolution rendition backup URL before masterUrl', 
 
     assert.deepStrictEqual(api.getMediaUrls(documentFixture).videos, [
         'https://sns-video-qc.xhscdn.com/clean-backup.mp4'
+    ]);
+});
+
+test('falls back to rendition masterUrl when its backup URL is invalid', () => {
+    const masterUrl = 'http://sns-video-qc.xhscdn.com/clean-master.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        EF5: [{
+                                            masterUrl,
+                                            backupUrls: ['blob:https://www.xiaohongshu.com/invalid-backup'],
+                                            height: 1080,
+                                            streamDesc: 'WEB_301'
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            return selector === 'script' ? [initialStateScript] : [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture).videos, [
+        'https://sns-video-qc.xhscdn.com/clean-master.mp4'
     ]);
 });
 

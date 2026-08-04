@@ -333,10 +333,13 @@
         const streams = Object.values(streamGroups || {})
             .flat()
             .filter(Boolean)
-            .map(stream => ({
-                stream,
-                url: normalizeRemoteMediaUrl((stream.backupUrls || [])[0] || stream.masterUrl)
-            }))
+            .map(stream => {
+                const backupUrl = normalizeRemoteMediaUrl((stream.backupUrls || [])[0]);
+                return {
+                    stream,
+                    url: backupUrl || normalizeRemoteMediaUrl(stream.masterUrl)
+                };
+            })
             .filter(candidate => candidate.url);
         const watermarkPattern = /(?:^|[_\s-])wm(?:[_\s-]|$)|watermark/i;
 
@@ -366,7 +369,8 @@
 
         if (currentNote && Array.isArray(currentNote.imageList)) {
             currentNote.imageList.forEach(item => {
-                const imageUrl = getOriginalImageUrl(item && (item.urlDefault || item.url));
+                const imageUrl = getOriginalImageUrl(item && item.urlDefault)
+                    || getOriginalImageUrl(item && item.url);
                 if (imageUrl) {
                     images.add(imageUrl);
                 }
