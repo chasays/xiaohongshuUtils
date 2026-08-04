@@ -181,6 +181,48 @@ test('deduplicates current slide images and reads JSON-LD video URLs', () => {
     assert.strictEqual(api.getNoteTitle(documentFixture), '视频标题');
 });
 
+test('prefers current-note original image URLs over rendered thumbnails', () => {
+    const thumbnail = fakeElement({
+        attributes: { src: 'https://sns-webpic-qc.xhscdn.com/rendered-thumbnail!webp' }
+    });
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            imageList: [{
+                                urlDefault: 'http://sns-webpic-qc.xhscdn.com/20260804/abc/first-image!nd_dft_wlteh_jpg_3'
+                            }, {
+                                url: 'https://sns-webpic-qc.xhscdn.com/20260804/abc/second-image!nd_dft_wlteh_jpg_3'
+                            }]
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            if (selector === '.swiper-slide img, .note-slider-img img') {
+                return [thumbnail];
+            }
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture).images, [
+        'https://ci.xiaohongshu.com/first-image?imageView2/format/jpeg',
+        'https://ci.xiaohongshu.com/second-image?imageView2/format/jpeg'
+    ]);
+});
+
 test('prefers a non-watermarked initial-state stream over the JSON-LD video URL', () => {
     const watermarkedUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/watermarked_259.mp4';
     const cleanUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/301/clean_301.mp4';

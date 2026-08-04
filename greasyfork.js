@@ -301,6 +301,28 @@
         }
     }
 
+    function getCurrentNote(initialState, noteId) {
+        const noteDetailMap = initialState && initialState.note && initialState.note.noteDetailMap;
+        const entry = noteId && noteDetailMap && noteDetailMap[noteId];
+        return entry && (entry.note || entry);
+    }
+
+    function getOriginalImageUrl(value) {
+        const mediaUrl = normalizeRemoteMediaUrl(value);
+        if (!mediaUrl) {
+            return '';
+        }
+
+        const url = new URL(mediaUrl);
+        if (!/(^|\.)xhscdn\.com$/i.test(url.hostname)) {
+            return '';
+        }
+        const match = url.pathname.match(/^\/\d+\/[0-9a-z]+\/([^!]+)/i);
+        return match
+            ? `https://ci.xiaohongshu.com/${match[1]}?imageView2/format/jpeg`
+            : '';
+    }
+
     function getMediaUrls(documentValue) {
         const images = new Set();
         const videos = new Set();
@@ -309,18 +331,30 @@
             return { images: [], videos: [] };
         }
 
-        Array.from(documentValue.querySelectorAll('.swiper-slide img, .note-slider-img img')).forEach(image => {
-            const url = image.currentSrc || getAttribute(image, 'src') || getAttribute(image, 'data-src');
-            if (url && !url.startsWith('data:')) {
-                images.add(url);
-            }
-        });
-
         const initialState = readInitialState(documentValue);
         const currentNoteId = getNoteIdFromUrl(documentValue.location && documentValue.location.href);
         const noteDetailMap = initialState && initialState.note && initialState.note.noteDetailMap;
+        const currentNote = getCurrentNote(initialState, currentNoteId);
         let candidateRoot = currentNoteId ? null : initialState;
         const candidates = [];
+
+        if (currentNote && Array.isArray(currentNote.imageList)) {
+            currentNote.imageList.forEach(item => {
+                const imageUrl = getOriginalImageUrl(item && (item.urlDefault || item.url));
+                if (imageUrl) {
+                    images.add(imageUrl);
+                }
+            });
+        }
+
+        if (images.size === 0) {
+            Array.from(documentValue.querySelectorAll('.swiper-slide img, .note-slider-img img')).forEach(image => {
+                const url = image.currentSrc || getAttribute(image, 'src') || getAttribute(image, 'data-src');
+                if (url && !url.startsWith('data:')) {
+                    images.add(url);
+                }
+            });
+        }
 
         if (currentNoteId
             && noteDetailMap
