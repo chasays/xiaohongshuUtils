@@ -223,6 +223,107 @@ test('prefers current-note original image URLs over rendered thumbnails', () => 
     ]);
 });
 
+test('prefers the current note originVideoKey over renditions and JSON-LD', () => {
+    const renditionUrl = 'https://sns-video-qc.xhscdn.com/rendition.mp4';
+    const jsonLdUrl = 'https://sns-video-qc.xhscdn.com/json-ld.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            video: {
+                                consumer: { originVideoKey: 'original/video-key' },
+                                media: {
+                                    stream: {
+                                        h264: [{
+                                            masterUrl: renditionUrl,
+                                            height: 2160,
+                                            streamDesc: 'X264_MP4'
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const jsonLdScript = {
+        textContent: JSON.stringify({
+            '@type': 'VideoObject',
+            contentUrl: jsonLdUrl
+        })
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            if (selector === 'script') {
+                return [initialStateScript];
+            }
+            if (selector === 'script[type="application/ld+json"]') {
+                return [jsonLdScript];
+            }
+            return [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture).videos, [
+        'https://sns-video-bd.xhscdn.com/original/video-key'
+    ]);
+});
+
+test('uses the clean highest-resolution rendition backup URL before masterUrl', () => {
+    const cleanMasterUrl = 'https://sns-video-qc.xhscdn.com/clean-master.mp4';
+    const cleanBackupUrl = 'http://sns-video-qc.xhscdn.com/clean-backup.mp4';
+    const watermarkedUrl = 'https://sns-video-qc.xhscdn.com/watermarked.mp4';
+    const initialStateScript = {
+        textContent: `window.__INITIAL_STATE__=${JSON.stringify({
+            note: {
+                noteDetailMap: {
+                    currentNote: {
+                        note: {
+                            video: {
+                                media: {
+                                    stream: {
+                                        h264: [{
+                                            masterUrl: watermarkedUrl,
+                                            backupUrls: [watermarkedUrl],
+                                            height: 2160,
+                                            streamDesc: 'WM_X264_MP4_web'
+                                        }],
+                                        EF5: [{
+                                            masterUrl: cleanMasterUrl,
+                                            backupUrls: [cleanBackupUrl],
+                                            height: 1080,
+                                            streamDesc: 'WEB_301'
+                                        }]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })};`
+    };
+    const documentFixture = {
+        location: {
+            href: 'https://www.xiaohongshu.com/explore/currentNote'
+        },
+        querySelectorAll(selector) {
+            return selector === 'script' ? [initialStateScript] : [];
+        }
+    };
+
+    assert.deepStrictEqual(api.getMediaUrls(documentFixture).videos, [
+        'https://sns-video-qc.xhscdn.com/clean-backup.mp4'
+    ]);
+});
+
 test('prefers a non-watermarked initial-state stream over the JSON-LD video URL', () => {
     const watermarkedUrl = 'https://sns-video-v2.xhscdn.com/stream/79/110/259/watermarked_259.mp4';
     const cleanUrl = 'http://sns-video-v2.xhscdn.com/stream/1/110/301/clean_301.mp4';

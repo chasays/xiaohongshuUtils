@@ -323,6 +323,33 @@
             : '';
     }
 
+    function getOriginalVideoUrl(note) {
+        const originKey = note && note.video && note.video.consumer && note.video.consumer.originVideoKey;
+        if (originKey) {
+            return normalizeRemoteMediaUrl(`https://sns-video-bd.xhscdn.com/${originKey}`);
+        }
+
+        const streamGroups = note && note.video && note.video.media && note.video.media.stream;
+        const streams = Object.values(streamGroups || {})
+            .flat()
+            .filter(Boolean)
+            .map(stream => ({
+                stream,
+                url: normalizeRemoteMediaUrl((stream.backupUrls || [])[0] || stream.masterUrl)
+            }))
+            .filter(candidate => candidate.url);
+        const watermarkPattern = /(?:^|[_\s-])wm(?:[_\s-]|$)|watermark/i;
+
+        streams.sort((left, right) => {
+            const leftClean = watermarkPattern.test(String(left.stream.streamDesc || '')) ? 0 : 1;
+            const rightClean = watermarkPattern.test(String(right.stream.streamDesc || '')) ? 0 : 1;
+            return rightClean - leftClean
+                || Number(right.stream.height || 0) - Number(left.stream.height || 0);
+        });
+
+        return streams[0] ? streams[0].url : '';
+    }
+
     function getMediaUrls(documentValue) {
         const images = new Set();
         const videos = new Set();
@@ -333,7 +360,6 @@
 
         const initialState = readInitialState(documentValue);
         const currentNoteId = getNoteIdFromUrl(documentValue.location && documentValue.location.href);
-        const noteDetailMap = initialState && initialState.note && initialState.note.noteDetailMap;
         const currentNote = getCurrentNote(initialState, currentNoteId);
         let candidateRoot = currentNoteId ? null : initialState;
         const candidates = [];
@@ -356,25 +382,25 @@
             });
         }
 
-        if (currentNoteId
-            && noteDetailMap
-            && typeof noteDetailMap === 'object'
-            && Object.prototype.hasOwnProperty.call(noteDetailMap, currentNoteId)) {
-            candidateRoot = noteDetailMap[currentNoteId];
+        const originalVideoUrl = getOriginalVideoUrl(currentNote);
+        if (originalVideoUrl) {
+            videos.add(originalVideoUrl);
         }
 
-        walkObject(candidateRoot, value => {
-            const mediaUrl = normalizeRemoteMediaUrl(value.masterUrl);
-            if (mediaUrl) {
-                candidates.push({
-                    url: mediaUrl,
-                    codec: String(value.videoCodec || ''),
-                    streamDesc: String(value.streamDesc || ''),
-                    width: Number(value.width || 0),
-                    isDefault: Number(value.defaultStream || 0)
-                });
-            }
-        });
+        if (videos.size === 0 && !currentNote) {
+            walkObject(candidateRoot, value => {
+                const mediaUrl = normalizeRemoteMediaUrl(value.masterUrl);
+                if (mediaUrl) {
+                    candidates.push({
+                        url: mediaUrl,
+                        codec: String(value.videoCodec || ''),
+                        streamDesc: String(value.streamDesc || ''),
+                        width: Number(value.width || 0),
+                        isDefault: Number(value.defaultStream || 0)
+                    });
+                }
+            });
+        }
 
         candidates.sort((left, right) => {
             const watermarkPattern = /(?:^|[_\s-])wm(?:[_\s-]|$)|watermark/i;
